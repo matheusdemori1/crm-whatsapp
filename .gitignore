@@ -1,0 +1,5 @@
+node_modules/
+.env
+crm.db
+.wa_sessions/
+*.log

@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CRM WhatsApp</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #25D366;
+      --green-dark: #128C7E;
+      --green-light: #dcf8c6;
+      --sidebar: #1a1a2e;
+      --sidebar-hover: #16213e;
+      --bg: #f0f2f5;
+      --white: #ffffff;
+      --border: #e1e5e9;
+      --text: #1a1a2e;
+      --text-muted: #6c757d;
+      --red: #e74c3c;
+      --yellow: #f39c12;
+      --blue: #3498db;
+      --shadow: 0 2px 12px rgba(0,0,0,0.08);
+      --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+    /* LOGIN */
+    #login-screen {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+    .login-box {
+      background: white; border-radius: 20px; padding: 48px 40px; width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .login-logo { text-align: center; margin-bottom: 32px; }
+    .login-logo .icon { font-size: 48px; }
+    .login-logo h1 { font-size: 24px; font-weight: 700; color: var(--text); margin-top: 8px; }
+    .login-logo p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 15px; transition: border-color 0.2s; outline: none; background: white;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--green); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+      border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--green); color: white; }
+    .btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #d0d5dd; }
+    .btn-outline { background: transparent; border: 1.5px solid var(--green); color: var(--green); }
+    .btn-outline:hover { background: var(--green); color: white; }
+    .btn-full { width: 100%; justify-content: center; padding: 14px; font-size: 16px; }
+    .error-msg { color: var(--red); font-size: 13px; margin-top: 8px; text-align: center; }
+
+    /* LAYOUT */
+    #app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 240px; background: var(--sidebar); color: white; display: flex; flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sidebar-header { padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .sidebar-logo { display: flex; align-items: center; gap: 12px; }
+    .sidebar-logo .icon { font-size: 28px; }
+    .sidebar-logo h2 { font-size: 18px; font-weight: 700; }
+    .sidebar-logo p { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px;
+      cursor: pointer; transition: all 0.15s; color: rgba(255,255,255,0.65); font-size: 14px; font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.08); color: white; }
+    .nav-item.active { background: var(--green); color: white; }
+    .nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+    .nav-badge {
+      margin-left: auto; background: var(--red); color: white; font-size: 11px; font-weight: 700;
+      padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center;
+    }
+    .sidebar-user { padding: 16px; border-top: 1px solid rgba(255,255,255,0.1); }
+    .user-info { display: flex; align-items: center; gap: 10px; }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--green);
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+    }
+    .user-name { font-size: 13px; font-weight: 600; }
+    .user-role { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .logout-btn { margin-top: 10px; width: 100%; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); border: none; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .logout-btn:hover { background: rgba(255,255,255,0.15); color: white; }
+
+    /* MAIN CONTENT */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      background: white; padding: 16px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar h1 { font-size: 20px; font-weight: 700; }
+    .topbar-actions { display: flex; gap: 10px; align-items: center; }
+    .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+    /* CARDS */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card {
+      background: white; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+    }
+    .stat-card .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+    .stat-card .value { font-size: 32px; font-weight: 700; margin-top: 6px; }
+    .stat-card .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .stat-card.green .value { color: var(--green-dark); }
+    .stat-card.blue .value { color: var(--blue); }
+    .stat-card.orange .value { color: var(--yellow); }
+    .stat-card.red .value { color: var(--red); }
+
+    /* TABLE */
+    .card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .card-header { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-header h3 { font-size: 15px; font-weight: 700; }
+    .card-body { padding: 0; }
+    .search-bar {
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .search-bar input { flex: 1; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; }
+    .search-bar input:focus { border-color: var(--green); }
+    .search-bar select { padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); background: #f8f9fa; border-bottom: 1px solid var(--border); }
+    td { padding: 13px 16px; font-size: 14px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafffe; }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-lead { background: #fff3cd; color: #856404; }
+    .badge-cliente { background: #d1f2e3; color: #145a32; }
+    .badge-perdido { background: #f8d7da; color: #842029; }
+    .action-btns { display: flex; gap: 6px; }
+    .icon-btn {
+      width: 32px; height: 32px; border: none; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; font-size: 15px; transition: all 0.15s;
+    }
+    .icon-btn:hover { transform: scale(1.1); }
+    .icon-btn-green { background: #e8faf0; color: var(--green-dark); }
+    .icon-btn-blue { background: #e8f4fd; color: var(--blue); }
+    .icon-btn-red { background: #fdecea; color: var(--red); }
+    .icon-btn-yellow { background: #fef9e7; color: var(--yellow); }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex;
+      align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+    }
+    .modal {
+      background: white; border-radius: 16px; width: 100%; max-width: 520px;
+      max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h2 { font-size: 18px; font-weight: 700; }
+    .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-muted); padding: 4px; }
+    .modal-body { padding: 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* WHATSAPP */
+    .wa-section { text-align: center; }
+    .qr-container {
+      display: inline-block; padding: 16px; background: white; border-radius: 12px;
+      border: 2px solid var(--border); margin: 16px 0;
+    }
+    .qr-container img { display: block; width: 220px; height: 220px; }
+    .wa-status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .wa-status-dot.connected { background: var(--green); }
+    .wa-status-dot.disconnected { background: var(--red); }
+    .wa-status-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* TOAST */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+    .toast {
+      background: var(--sidebar); color: white; padding: 14px 20px; border-radius: 10px;
+      font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px;
+      animation: slideIn 0.3s ease; max-width: 340px;
+    }
+    .toast.success { border-left: 4px solid var(--green); }
+    .toast.error { border-left: 4px solid var(--red); }
+    .toast.info { border-left: 4px solid var(--blue); }
+    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* INTERACTIONS LIST */
+    .interaction-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+    .interaction-item:last-child { border-bottom: none; }
+    .interaction-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .interaction-icon.call { background: #e8f4fd; }
+    .interaction-icon.whatsapp { background: var(--green-light); }
+    .interaction-icon.email { background: #fef9e7; }
+    .interaction-info .user { font-size: 13px; font-weight: 600; }
+    .interaction-info .notes { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+    .interaction-info .date { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* SALE CARD */
+    .sale-item { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #f0f0f0; }
+    .sale-item:last-child { border-bottom: none; }
+    .sale-icon { width: 42px; height: 42px; border-radius: 50%; background: var(--green-light); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    .sale-info { flex: 1; }
+    .sale-info .name { font-size: 14px; font-weight: 600; }
+    .sale-info .meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .sale-value { font-size: 16px; font-weight: 700; color: var(--green-dark); }
+    .sale-source { font-size: 11px; }
+    .sale-source.webhook { color: var(--blue); }
+    .sale-source.manual { color: var(--text-muted); }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 15px; }
+
+    /* TABS */
+    .tabs { display: flex; gap: 4px; background: #f0f2f5; padding: 4px; border-radius: 10px; margin-bottom: 20px; }
+    .tab { flex: 1; padding: 8px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+    .tab.active { background: white; color: var(--text); box-shadow: var(--shadow); }
+
+    /* WEBHOOK BOX */
+    .webhook-box { background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .webhook-url { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--blue); background: white; padding: 10px; border-radius: 6px; border: 1px solid var(--border); margin-top: 8px; cursor: pointer; }
+    .webhook-url:hover { background: #f0f8ff; }
+
+    /* GRID */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media(max-width:600px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* LOADING */
+    .loading { text-align: center; padding: 40px; color: var(--text-muted); font-size: 14px; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hidden { display: none !important; }
+    .text-muted { color: var(--text-muted); }
+    .fw-bold { font-weight: 700; }
+    .mt-2 { margin-top: 8px; }
+    .mt-3 { margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="icon">💬</div>
+      <h1>CRM WhatsApp</h1>
+      <p>Faça login para continuar</p>
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="seu@email.com" />
+    </div>
+    <div class="form-group">
+      <label>Senha</label>
+      <input type="password" id="login-password" placeholder="••••••••" />
+    </div>
+    <p id="login-error" class="error-msg hidden"></p>
+    <button class="btn btn-primary btn-full mt-3" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="icon">💬</div>
+        <div>
+          <h2>CRM WA</h2>
+          <p>Painel de vendas</p>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+        <span class="icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="showPage('contacts')" id="nav-contacts">
+        <span class="icon">👥</span> Contatos
+        <span class="nav-badge hidden" id="badge-contacts">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('sales')" id="nav-sales">
+        <span class="icon">💰</span> Vendas
+        <span class="nav-badge hidden" id="badge-sales">!</span>
+      </div>
+      <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp">
+        <span class="icon">📱</span> WhatsApp
+      </div>
+      <div class="nav-item" id="nav-settings" onclick="showPage('settings')">
+        <span class="icon">⚙️</span> Configurações
+      </div>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">A</div>
+        <div>
+          <div class="user-name" id="user-display-name">Admin</div>
+          <div class="user-role" id="user-display-role">admin</div>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sair</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <h1 id="page-title">Dashboard</h1>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </div>
+    <div class="content" id="page-content">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+// ==================== CONFIG ====================
+const API = '';
+let token = localStorage.getItem('crm_token');
+let currentUser = JSON.parse(localStorage.getItem('crm_user') || 'null');
+let socket = null;
+let allContacts = [];
+let allSales = [];
+let waConnectInterval = null;
+
+// ==================== UTILS ====================
+function api(path, opts = {}) {
+  return fetch(API + '/api' + path, {
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts
+  }).then(async r => {
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: 'Erro desconhecido' }));
+      throw new Error(err.error || 'Erro na requisição');
+    }
+    return r.json();
+  });
+}
+
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span> ${msg}`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtMoney(v) {
+  return 'R$ ' + parseFloat(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+}
+
+function timeSince(d) {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'agora';
+  if (m < 60) return `${m}min atrás`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h atrás`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d atrás`;
+  return new Date(d).toLocaleDateString('pt-BR');
+}
+
+function statusBadge(s) {
+  const map = { lead: ['badge-lead', 'Lead'], cliente: ['badge-cliente', '✅ Cliente'], perdido: ['badge-perdido', 'Perdido'] };
+  const [cls, label] = map[s] || ['badge-lead', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ==================== AUTH ====================
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.classList.add('hidden');
+  try {
+    const data = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    }).then(r => r.json());
+    if (data.error) { errEl.textContent = data.error; errEl.classList.remove('hidden'); return; }
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('crm_token', token);
+    localStorage.setItem('crm_user', JSON.stringify(currentUser));
+    initApp();
+  } catch (e) {
+    errEl.textContent = 'Erro de conexão';
+    errEl.classList.remove('hidden');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !document.getElementById('login-screen').classList.contains('hidden')) doLogin();
+});
+
+function doLogout() {
+  localStorage.removeItem('crm_token');
+  localStorage.removeItem('crm_user');
+  token = null; currentUser = null;
+  if (socket) socket.disconnect();
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+// ==================== INIT ====================
+function initApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('user-display-name').textContent = currentUser.name;
+  document.getElementById('user-display-role').textContent = currentUser.role;
+  document.getElementById('user-avatar').textContent = currentUser.name.charAt(0).toUpperCase();
+
+  // Admin only: settings
+  if (currentUser.role !== 'admin') {
+    document.getElementById('nav-settings').classList.add('hidden');
+  }
+
+  // Socket.IO
+  socket = io();
+  socket.emit('join', currentUser.id);
+
+  socket.on('new_sale', sale => {
+    toast(`💰 Nova venda! ${sale.contact_name} - ${fmtMoney(sale.value)}`, 'success');
+    document.getElementById('badge-sales').classList.remove('hidden');
+    if (allSales) allSales.unshift(sale);
+    if (document.getElementById('nav-sales').classList.contains('active')) renderSalesPage();
+    if (document.getElementById('nav-dashboard').classList.contains('active')) loadDashboard();
+  });
+
+  socket.on('contact_updated', updated => {
+    const idx = allContacts.findIndex(c => c.id === updated.id);
+    if (idx >= 0) allContacts[idx] = { ...allContacts[idx], ...updated };
+    if (document.getElementById('nav-contacts').classList.contains('active')) renderContactsTable(allContacts);
+  });
+
+  socket.on('contact_created', c => {
+    allContacts.unshift(c);
+    if (document.getElementById('nav-contacts').classList.contains('active')) renderContactsTable(allContacts);
+  });
+
+  socket.on('contact_deleted', ({ id }) => {
+    allContacts = allContacts.filter(c => c.id !== id);
+    if (document.getElementById('nav-contacts').classList.contains('active')) renderContactsTable(allContacts);
+  });
+
+  socket.on('wa_qr', ({ qr }) => {
+    const img = document.getElementById('wa-qr-img');
+    const box = document.getElementById('wa-qr-box');
+    if (img) img.src = qr;
+    if (box) box.classList.remove('hidden');
+    const statusEl = document.getElementById('wa-status-text');
+    if (statusEl) statusEl.innerHTML = '<span class="wa-status-dot connecting"></span> Escaneie o QR Code com seu WhatsApp';
+  });
+
+  socket.on('wa_status', ({ status, msg }) => {
+    const statusEl = document.getElementById('wa-status-text');
+    const qrBox = document.getElementById('wa-qr-box');
+    if (statusEl) {
+      const dot = `<span class="wa-status-dot ${status === 'connected' ? 'connected' : status === 'disconnected' ? 'disconnected' : 'connecting'}"></span>`;
+      statusEl.innerHTML = `${dot} ${msg}`;
+    }
+    if (status === 'connected') {
+      if (qrBox) qrBox.classList.add('hidden');
+      renderWAConnected();
+    }
+    if (status === 'disconnected') {
+      if (qrBox) qrBox.classList.add('hidden');
+      renderWADisconnected();
+    }
+  });
+
+  showPage('dashboard');
+}
+
+// ==================== NAVIGATION ====================
+function showPage(page) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navEl = document.getElementById('nav-' + page);
+  if (navEl) { navEl.classList.add('active'); navEl.querySelector('.nav-badge')?.classList.add('hidden'); }
+
+  const titles = { dashboard: 'Dashboard', contacts: 'Contatos', sales: 'Vendas', whatsapp: 'WhatsApp', settings: 'Configurações' };
+  document.getElementById('page-title').textContent = titles[page] || page;
+
+  const actions = document.getElementById('topbar-actions');
+  actions.innerHTML = '';
+
+  if (page === 'dashboard') loadDashboard();
+  else if (page === 'contacts') loadContacts(actions);
+  else if (page === 'sales') loadSales(actions);
+  else if (page === 'whatsapp') loadWhatsApp();
+  else if (page === 'settings') loadSettings();
+}
+
+// ==================== DASHBOARD ====================
+async function loadDashboard() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const stats = await api('/stats');
+    content.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card green">
+          <div class="label">Total Contatos</div>
+          <div class="value">${stats.totalContacts}</div>
+          <div class="sub">${stats.leadsCount} leads · ${stats.clientesCount} clientes</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="label">Total Vendas</div>
+          <div class="value">${stats.totalSales}</div>
+          <div class="sub">registradas no sistema</div>
+        </div>
+        <div class="stat-card orange">
+          <div class="label">Receita Total</div>
+          <div class="value" style="font-size:22px">${fmtMoney(stats.totalRevenue)}</div>
+          <div class="sub">todas as vendas</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Contatos Hoje</div>
+          <div class="value">${stats.todayInteractions}</div>
+          <div class="sub">interações hoje</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3>💰 Vendas Recentes</h3></div>
+          <div id="recent-sales-list">
+            ${stats.recentSales.length === 0
+              ? '<div class="empty-state"><div class="icon">💸</div><p>Nenhuma venda ainda</p></div>'
+              : stats.recentSales.map(s => `
+                <div class="sale-item">
+                  <div class="sale-icon">💰</div>
+                  <div class="sale-info">
+                    <div class="name">${s.contact_name}</div>
+                    <div class="meta">${s.product || 'Produto'} · ${s.user_name || 'Sistema'} · <span class="sale-source ${s.source}">${s.source === 'webhook' ? '🔗 webhook' : '✋ manual'}</span></div>
+                  </div>
+                  <div>
+                    <div class="sale-value">${fmtMoney(s.value)}</div>
+                    <div style="font-size:11px;color:#999;text-align:right">${timeSince(s.purchased_at)}</div>
+                  </div>
+                </div>`).join('')}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>🏆 Top Vendedoras</h3></div>
+          <div style="padding:16px">
+            ${stats.topVendedoras.length === 0
+              ? '<div class="empty-state"><div class="icon">👩‍💼</div><p>Sem dados ainda</p></div>'
+              : stats.topVendedoras.map((v, i) => `
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0">
+                  <div style="width:28px;height:28px;border-radius:50%;background:${i===0?'#f39c12':i===1?'#bdc3c7':'#cd7f32'};color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">${i+1}</div>
+                  <div style="flex:1">
+                    <div style="font-weight:600;font-size:14px">${v.name}</div>
+                    <div style="font-size:12px;color:#999">${v.total_sales} vendas</div>
+                  </div>
+                  <div style="font-weight:700;color:#128C7E">${fmtMoney(v.revenue)}</div>
+                </div>`).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`;
+  }
+}
+
+// ==================== CONTACTS ====================
+async function loadContacts(actions) {
+  actions.innerHTML = `<button class="btn btn-primary" onclick="openContactModal()">+ Novo Contato</button>`;
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    allContacts = await api('/contacts');
+    renderContactsPage(allContacts);
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`;
+  }
+}
+
+function renderContactsPage(contacts) {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `
+    <div class="card">
+      <div class="search-bar">
+        <input type="text" id="contact-search" placeholder="🔍 Buscar por nome, telefone ou email..." oninput="filterContacts()" />
+        <select id="contact-filter" onchange="filterContacts()">
+          <option value="">Todos</option>
+          <option value="lead">Leads</option>
+          <option value="cliente">Clientes</option>
+          <option value="perdido">Perdidos</option>
+        </select>
+      </div>
+      <div id="contacts-table-wrap"></div>
+    </div>
+  `;
+  renderContactsTable(contacts);
+}
+
+function filterContacts() {
+  const q = document.getElementById('contact-search')?.value.toLowerCase() || '';
+  const status = document.getElementById('contact-filter')?.value || '';
+  const filtered = allContacts.filter(c => {
+    const matchQ = !q || c.name.toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.email||'').toLowerCase().includes(q);
+    const matchS = !status || c.status === status;
+    return matchQ && matchS;
+  });
+  renderContactsTable(filtered);
+}
+
+function renderContactsTable(contacts) {
+  const wrap = document.getElementById('contacts-table-wrap');
+  if (!wrap) return;
+  if (contacts.length === 0) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">👥</div><p>Nenhum contato encontrado</p></div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th><th>Telefone</th><th>Status</th>
+          <th>Último Contato</th><th>Vendedora</th><th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${contacts.map(c => `
+          <tr>
+            <td>
+              <div style="font-weight:600">${c.name}</div>
+              ${c.email ? `<div style="font-size:12px;color:#999">${c.email}</div>` : ''}
+            </td>
+            <td>${c.phone ? `<a href="https://wa.me/${c.phone.replace(/\D/g,'')}\" target="_blank" style="color:var(--green-dark);text-decoration:none;font-weight:600">📱 ${c.phone}</a>` : '—'}</td>
+            <td>${statusBadge(c.status)}</td>
+            <td>
+              <div>${timeSince(c.last_contact_at)}</div>
+              ${c.last_contact_at ? `<div style="font-size:11px;color:#999">${fmtDate(c.last_contact_at)}</div>` : ''}
+            </td>
+            <td>${c.assigned_name || '—'}</td>
+            <td>
+              <div class="action-btns">
+                <button class="icon-btn icon-btn-green" title="Marcar Contato" onclick="touchContact(${c.id}, '${c.name.replace(/'/g,"\\'")}')">☎️</button>
+                <button class="icon-btn icon-btn-blue" title="Ver histórico" onclick="viewContact(${c.id})">👁</button>
+                <button class="icon-btn icon-btn-yellow" title="Registrar Venda" onclick="openSaleModal(${c.id}, '${c.name.replace(/'/g,"\\'")}')">💰</button>
+                <button class="icon-btn icon-btn-blue" title="Editar" onclick="openContactModal(${c.id})">✏️</button>
+                <button class="icon-btn icon-btn-red" title="Excluir" onclick="deleteContact(${c.id})">🗑</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
+// Marcar último contato
+function touchContact(id, name) {
+  showModal(`☎️ Registrar Contato — ${name}`, `
+    <div class="form-group">
+      <label>Tipo</label>
+      <select id="touch-type">
+        <option value="call">📞 Ligação</option>
+        <option value="whatsapp">📱 WhatsApp</option>
+        <option value="email">📧 Email</option>
+        <option value="meeting">🤝 Reunião</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Observações</label>
+      <textarea id="touch-notes" rows="3" placeholder="O que foi discutido?"></textarea>
+    </div>
+  `, async () => {
+    const type = document.getElementById('touch-type').value;
+    const notes = document.getElementById('touch-notes').value;
+    await api(`/contacts/${id}/touch`, { method: 'POST', body: JSON.stringify({ type, notes }) });
+    toast('Contato registrado!', 'success');
+    const idx = allContacts.findIndex(c => c.id === id);
+    if (idx >= 0) allContacts[idx].last_contact_at = new Date().toISOString();
+    renderContactsTable(allContacts);
+    closeModal();
+  });
+}
+
+// Ver histórico do contato
+async function viewContact(id) {
+  const contact = allContacts.find(c => c.id === id);
+  const interactions = await api(`/contacts/${id}/interactions`);
+  const typeIcon = { call: '📞', whatsapp: '📱', email: '📧', meeting: '🤝' };
+
+  showModal(`👁 Histórico — ${contact.name}`, `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><span class="text-muted">Telefone:</span> <strong>${contact.phone || '—'}</strong></div>
+        <div><span class="text-muted">Status:</span> ${statusBadge(contact.status)}</div>
+        <div><span class="text-muted">Vendas:</span> <strong>${contact.sales_count || 0}</strong></div>
+      </div>
+    </div>
+    <h4 style="margin-bottom:12px">Histórico de Interações</h4>
+    ${interactions.length === 0
+      ? '<div class="empty-state" style="padding:24px"><div class="icon">📋</div><p>Sem interações</p></div>'
+      : interactions.map(i => `
+        <div class="interaction-item">
+          <div class="interaction-icon ${i.type}">${typeIcon[i.type] || '💬'}</div>
+          <div class="interaction-info">
+            <div class="user">${i.user_name || 'Sistema'}</div>
+            ${i.notes ? `<div class="notes">${i.notes}</div>` : ''}
+            <div class="date">${fmtDate(i.created_at)}</div>
+          </div>
+        </div>`).join('')}
+  `, null, 'Fechar');
+}
+
+// Modal de Contato
+async function openContactModal(id = null) {
+  let contact = null;
+  let users = [];
+  try { users = await api('/users'); } catch {}
+  if (id) contact = allContacts.find(c => c.id === id);
+
+  showModal(id ? '✏️ Editar Contato' : '+ Novo Contato', `
+    <div class="form-group"><label>Nome *</label><input id="c-name" value="${contact?.name || ''}" /></div>
+    <div class="grid-2">
+      <div class="form-group"><label>Telefone (com DDD)</label><input id="c-phone" value="${contact?.phone || ''}" placeholder="(11) 99999-9999" /></div>
+      <div class="form-group"><label>Email</label><input id="c-email" type="email" value="${contact?.email || ''}" /></div>
+    </div>
+    <div class="form-group">
+      <label>Responsável</label>
+      <select id="c-assigned">
+        ${users.map(u => `<option value="${u.id}" ${(contact?.assigned_to == u.id || (!contact && u.id == currentUser.id)) ? 'selected' : ''}>${u.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="c-status">
+        <option value="lead" ${contact?.status === 'lead' ? 'selected' : ''}>Lead</option>
+        <option value="cliente" ${contact?.status === 'cliente' ? 'selected' : ''}>Cliente</option>
+        <option value="perdido" ${contact?.status === 'perdido' ? 'selected' : ''}>Perdido</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Observações</label><textarea id="c-notes" rows="3">${contact?.notes || ''}</textarea></div>
+  `, async () => {
+    const name = document.getElementById('c-name').value.trim();
+    if (!name) return toast('Nome é obrigatório', 'error');
+    const body = {
+      name,
+      phone: document.getElementById('c-phone').value,
+      email: document.getElementById('c-email').value,
+      assigned_to: document.getElementById('c-assigned').value,
+      status: document.getElementById('c-status').value,
+      notes: document.getElementById('c-notes').value
+    };
+    if (id) {
+      await api(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+      toast('Contato atualizado!', 'success');
+    } else {
+      await api('/contacts', { method: 'POST', body: JSON.stringify(body) });
+      toast('Contato criado!', 'success');
+    }
+    closeModal();
+  });
+}
+
+async function deleteContact(id) {
+  if (!confirm('Excluir este contato e todas suas interações/vendas?')) return;
+  await api(`/contacts/${id}`, { method: 'DELETE' });
+  toast('Contato excluído', 'info');
+}
+
+// ==================== SALES ====================
+async function loadSales(actions) {
+  actions.innerHTML = `<button class="btn btn-primary" onclick="openSaleModal()">+ Registrar Venda</button>`;
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    allSales = await api('/sales');
+    renderSalesPage();
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`;
+  }
+}
+
+function renderSalesPage() {
+  const content = document.getElementById('page-content');
+  const totalRev = allSales.reduce((s, x) => s + (x.value || 0), 0);
+  const webhookCount = allSales.filter(s => s.source === 'webhook').length;
+
+  content.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card green"><div class="label">Total Vendas</div><div class="value">${allSales.length}</div></div>
+      <div class="stat-card orange"><div class="label">Receita Total</div><div class="value" style="font-size:20px">${fmtMoney(totalRev)}</div></div>
+      <div class="stat-card blue"><div class="label">Via Webhook</div><div class="value">${webhookCount}</div><div class="sub">do seu site</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>💰 Todas as Vendas</h3>
+        <input type="text" id="sales-search" placeholder="Buscar..." style="padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none" oninput="filterSales()" />
+      </div>
+      <div id="sales-table-wrap"></div>
+    </div>
+  `;
+  renderSalesTable(allSales);
+}
+
+function filterSales() {
+  const q = document.getElementById('sales-search')?.value.toLowerCase() || '';
+  const filtered = allSales.filter(s =>
+    s.contact_name.toLowerCase().includes(q) ||
+    (s.product||'').toLowerCase().includes(q) ||
+    (s.user_name||'').toLowerCase().includes(q)
+  );
+  renderSalesTable(filtered);
+}
+
+function renderSalesTable(sales) {
+  const wrap = document.getElementById('sales-table-wrap');
+  if (!wrap) return;
+  if (sales.length === 0) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">💸</div><p>Nenhuma venda encontrada</p></div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Cliente</th><th>Produto</th><th>Valor</th><th>Vendedora</th><th>Origem</th><th>Data</th><th></th></tr></thead>
+      <tbody>
+        ${sales.map(s => `
+          <tr>
+            <td><div style="font-weight:600">${s.contact_name}</div><div style="font-size:12px;color:#999">${s.contact_phone||''}</div></td>
+            <td>${s.product || '—'}</td>
+            <td style="font-weight:700;color:var(--green-dark)">${fmtMoney(s.value)}</td>
+            <td>${s.user_name || '—'}</td>
+            <td><span class="badge ${s.source==='webhook'?'badge-cliente':'badge-lead'}">${s.source==='webhook'?'🔗 Site':'✋ Manual'}</span></td>
+            <td style="font-size:12px">${fmtDate(s.purchased_at)}</td>
+            <td><button class="icon-btn icon-btn-red" onclick="deleteSale(${s.id})">🗑</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
+async function openSaleModal(contactId = null, contactName = '') {
+  if (allContacts.length === 0) { try { allContacts = await api('/contacts'); } catch {} }
+  showModal('💰 Registrar Venda', `
+    <div class="form-group">
+      <label>Cliente *</label>
+      <select id="sale-contact">
+        <option value="">Selecione...</option>
+        ${allContacts.map(c => `<option value="${c.id}" ${c.id === contactId ? 'selected' : ''}>${c.name} ${c.phone ? '('+c.phone+')' : ''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="grid-2">
+      <div class="form-group"><label>Produto/Serviço</label><input id="sale-product" placeholder="Nome do produto" /></div>
+      <div class="form-group"><label>Valor (R$)</label><input id="sale-value" type="number" step="0.01" placeholder="0,00" /></div>
+    </div>
+    <div class="form-group"><label>Observações</label><textarea id="sale-notes" rows="2" placeholder="Detalhes da venda..."></textarea></div>
+  `, async () => {
+    const contact_id = document.getElementById('sale-contact').value;
+    if (!contact_id) return toast('Selecione um cliente', 'error');
+    await api('/sales', { method: 'POST', body: JSON.stringify({
+      contact_id: parseInt(contact_id),
+      product: document.getElementById('sale-product').value,
+      value: document.getElementById('sale-value').value,
+      notes: document.getElementById('sale-notes').value
+    }) });
+    toast('Venda registrada! 🎉', 'success');
+    allSales = await api('/sales');
+    renderSalesPage();
+    closeModal();
+  });
+}
+
+async function deleteSale(id) {
+  if (!confirm('Excluir esta venda?')) return;
+  await api(`/sales/${id}`, { method: 'DELETE' });
+  allSales = allSales.filter(s => s.id !== id);
+  renderSalesPage();
+  toast('Venda excluída', 'info');
+}
+
+// ==================== WHATSAPP ====================
+async function loadWhatsApp() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  let status = 'disconnected';
+  try { const r = await api('/whatsapp/status'); status = r.status; } catch {}
+
+  content.innerHTML = `
+    <div style="max-width:520px;margin:0 auto">
+      <div class="card">
+        <div class="card-header"><h3>📱 Conexão WhatsApp</h3></div>
+        <div class="card-body" style="padding:32px;text-align:center">
+          <div id="wa-status-text" style="font-size:15px;margin-bottom:24px">
+            <span class="wa-status-dot ${status === 'connected' ? 'connected' : 'disconnected'}"></span>
+            ${status === 'connected' ? 'WhatsApp conectado!' : 'Desconectado'}
+          </div>
+          <div id="wa-qr-box" class="${status === 'connected' ? 'hidden' : 'hidden'}">
+            <p style="font-size:13px;color:#666;margin-bottom:12px">Abra o WhatsApp → Menu → Dispositivos conectados → Conectar dispositivo</p>
+            <div class="qr-container">
+              <img id="wa-qr-img" src="" alt="QR Code" />
+            </div>
+          </div>
+          <div id="wa-actions">
+            ${status === 'connected'
+              ? `<button class="btn btn-danger" onclick="disconnectWA()">Desconectar WhatsApp</button>`
+              : `<button class="btn btn-primary" onclick="connectWA()">🔗 Conectar WhatsApp</button>`}
+          </div>
+          <div style="margin-top:24px;background:#f8f9fa;border-radius:10px;padding:16px;text-align:left">
+            <h4 style="margin-bottom:8px;font-size:13px">ℹ️ Como funciona</h4>
+            <p style="font-size:13px;color:#666;line-height:1.6">
+              Ao conectar seu WhatsApp, quando clientes te mandarem mensagem, a data de <strong>último contato</strong> será atualizada automaticamente no CRM. Cada vendedora pode conectar seu próprio WhatsApp.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function connectWA() {
+  const actionsEl = document.getElementById('wa-actions');
+  actionsEl.innerHTML = '<div class="spinner"></div><p style="margin-top:8px;font-size:13px;color:#666">Iniciando conexão...</p>';
+  const statusEl = document.getElementById('wa-status-text');
+  statusEl.innerHTML = '<span class="wa-status-dot connecting"></span> Aguardando QR Code...';
+  try {
+    await api('/whatsapp/connect', { method: 'POST' });
+  } catch (e) {
+    toast('Erro ao conectar: ' + e.message, 'error');
+    actionsEl.innerHTML = `<button class="btn btn-primary" onclick="connectWA()">🔗 Conectar WhatsApp</button>`;
+  }
+}
+
+async function disconnectWA() {
+  if (!confirm('Desconectar WhatsApp?')) return;
+  await api('/whatsapp/disconnect', { method: 'POST' });
+  toast('WhatsApp desconectado', 'info');
+  loadWhatsApp();
+}
+
+function renderWAConnected() {
+  const actionsEl = document.getElementById('wa-actions');
+  if (actionsEl) actionsEl.innerHTML = `<button class="btn btn-danger" onclick="disconnectWA()">Desconectar WhatsApp</button>`;
+}
+
+function renderWADisconnected() {
+  const actionsEl = document.getElementById('wa-actions');
+  if (actionsEl) actionsEl.innerHTML = `<button class="btn btn-primary" onclick="connectWA()">🔗 Conectar WhatsApp</button>`;
+}
+
+// ==================== SETTINGS ====================
+async function loadSettings() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const [settings, users] = await Promise.all([api('/settings'), api('/users')]);
+    content.innerHTML = `
+      <div style="display:grid;gap:20px;max-width:700px">
+
+        <div class="card">
+          <div class="card-header"><h3>🔗 Webhook do Site</h3></div>
+          <div style="padding:20px">
+            <p style="font-size:14px;color:#666;margin-bottom:12px">
+              Configure este URL no seu site para registrar vendas automaticamente no CRM.
+            </p>
+            <div class="webhook-box">
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">URL do Webhook (POST)</label>
+              <div class="webhook-url" id="webhook-url" onclick="copyWebhook()" title="Clique para copiar">
+                ${settings.webhookUrl}
+              </div>
+            </div>
+            <div class="webhook-box" style="margin-top:12px">
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">Exemplo de payload JSON</label>
+              <pre style="font-size:12px;background:white;padding:10px;border-radius:6px;border:1px solid var(--border);overflow-x:auto">{
+  "name": "João Silva",
+  "phone": "11999999999",
+  "email": "joao@email.com",
+  "product": "Produto Premium",
+  "value": 297.00,
+  "vendedora_id": 2
+}</pre>
+            </div>
+            <button class="btn btn-secondary" style="margin-top:8px" onclick="regenerateToken()">🔄 Regenerar Token</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>👥 Vendedoras</h3>
+            <button class="btn btn-primary" onclick="openUserModal()">+ Adicionar</button>
+          </div>
+          <div id="users-list">
+            <table>
+              <thead><tr><th>Nome</th><th>Email</th><th>Cargo</th><th></th></tr></thead>
+              <tbody>
+                ${users.map(u => `
+                  <tr>
+                    <td><strong>${u.name}</strong></td>
+                    <td>${u.email}</td>
+                    <td><span class="badge ${u.role === 'admin' ? 'badge-cliente' : 'badge-lead'}">${u.role}</span></td>
+                    <td>${u.id !== currentUser.id ? `<button class="icon-btn icon-btn-red" onclick="deleteUser(${u.id})">🗑</button>` : '<span style="font-size:12px;color:#999">você</span>'}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>🔐 Alterar Senha</h3></div>
+          <div style="padding:20px">
+            <div class="form-group"><label>Senha Atual</label><input type="password" id="pwd-current" /></div>
+            <div class="form-group"><label>Nova Senha</label><input type="password" id="pwd-new" /></div>
+            <button class="btn btn-primary" onclick="changePassword()">Alterar Senha</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`;
+  }
+}
+
+function copyWebhook() {
+  const url = document.getElementById('webhook-url').textContent.trim();
+  navigator.clipboard.writeText(url).then(() => toast('URL copiada!', 'success'));
+}
+
+async function regenerateToken() {
+  if (!confirm('Regenerar token? O URL atual vai parar de funcionar.')) return;
+  const data = await api('/settings/regenerate-token', { method: 'POST' });
+  document.getElementById('webhook-url').textContent = data.webhookUrl;
+  toast('Token regenerado!', 'success');
+}
+
+function openUserModal() {
+  showModal('+ Nova Vendedora', `
+    <div class="form-group"><label>Nome</label><input id="u-name" /></div>
+    <div class="form-group"><label>Email</label><input id="u-email" type="email" /></div>
+    <div class="form-group"><label>Senha</label><input id="u-password" type="password" /></div>
+    <div class="form-group">
+      <label>Cargo</label>
+      <select id="u-role">
+        <option value="vendedora">Vendedora</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+  `, async () => {
+    const name = document.getElementById('u-name').value.trim();
+    const email = document.getElementById('u-email').value.trim();
+    const password = document.getElementById('u-password').value;
+    const role = document.getElementById('u-role').value;
+    if (!name || !email || !password) return toast('Preencha todos os campos', 'error');
+    await api('/users', { method: 'POST', body: JSON.stringify({ name, email, password, role }) });
+    toast('Usuário criado!', 'success');
+    closeModal();
+    loadSettings();
+  });
+}
+
+async function deleteUser(id) {
+  if (!confirm('Excluir este usuário?')) return;
+  await api(`/users/${id}`, { method: 'DELETE' });
+  toast('Usuário excluído', 'info');
+  loadSettings();
+}
+
+async function changePassword() {
+  const current = document.getElementById('pwd-current').value;
+  const newPass = document.getElementById('pwd-new').value;
+  if (!current || !newPass) return toast('Preencha os campos', 'error');
+  try {
+    await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ current, newPass }) });
+    toast('Senha alterada!', 'success');
+    document.getElementById('pwd-current').value = '';
+    document.getElementById('pwd-new').value = '';
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ==================== MODAL ====================
+function showModal(title, body, onConfirm = null, confirmLabel = 'Salvar') {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'active-modal';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <h2>${title}</h2>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">${body}</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        ${onConfirm ? `<button class="btn btn-primary" id="modal-confirm-btn" onclick="handleModalConfirm()">${confirmLabel}</button>` : `<button class="btn btn-primary" onclick="closeModal()">${confirmLabel}</button>`}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  window._modalConfirm = onConfirm;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+}
+
+async function handleModalConfirm() {
+  const btn = document.getElementById('modal-confirm-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    await window._modalConfirm();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Salvar'; }
+  }
+}
+
+function closeModal() {
+  document.getElementById('active-modal')?.remove();
+}
+
+// ==================== STARTUP ====================
+if (token && currentUser) {
+  initApp();
+}
+</script>
+</body>
+</html>
