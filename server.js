@@ -470,9 +470,10 @@ async function initWAClient(userId) {
     if (msg.from === 'status@broadcast' || msg.isStatus) return;
     if (msg.from.includes('@g.us')) return; // ignora grupos
 
-    const rawNumber = msg.from.replace('@c.us', '').replace(/\D/g, '');
-    const phone11   = rawNumber.slice(-11);
-    const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber;
+    const rawFrom = msg.from.replace('@c.us', '').replace(/\D/g, '');
+    if (!rawFrom || rawFrom.length < 8) return;
+    const phone11   = rawFrom.slice(-11);
+    const phoneFull = rawFrom.startsWith('55') ? rawFrom : '55' + rawFrom.slice(-11);
 
     let contact = db.prepare(
       "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
@@ -520,27 +521,39 @@ async function initWAClient(userId) {
       if (msg.to.includes('@c.us')) {
         // Formato padrão: número direto no JID
         rawNumber = msg.to.replace('@c.us', '').replace(/\D/g, '');
-      } else if (msg.to.includes('@lid')) {
-        // Formato multi-device LID: precisa resolver o número real
         try {
-          const waContact = await msg.getContact();
-          rawNumber = (waContact.number || waContact.id?.user || '').replace(/\D/g, '');
-          waContactName = waContact.pushname || waContact.name || null;
-          console.log(`[WA→MSG] LID resolvido → fone real: ${rawNumber} | nome: ${waContactName}`);
+          const wc = await msg.getContact();
+          waContactName = wc.pushname || wc.name || null;
+        } catch(e) {}
+      } else if (msg.to.includes('@lid')) {
+        // Formato multi-device LID: msg.getContact() falha, usar getChat()
+        try {
+          const chat = await msg.getChat();
+          // chat.id._serialized = "5511987654321@c.us" ou chat.id.user = "5511987654321"
+          const chatUser = (chat.id?._serialized || '').replace('@c.us','') || chat.id?.user || '';
+          rawNumber = chatUser.replace(/\D/g, '');
+          waContactName = chat.name || null;
+          console.log(`[WA→MSG] LID→chat: ${chat.id?._serialized} | rawNumber=${rawNumber} | nome=${waContactName}`);
         } catch(e) {
-          console.log(`[WA→MSG] Erro ao resolver LID ${msg.to}: ${e.message}`);
-          return;
+          console.log(`[WA→MSG] Erro getChat LID ${msg.to}: ${e.message}`);
+          // último recurso: _data interno
+          try {
+            const u = msg._data?.to?.user || msg._data?.chatId?.user || '';
+            rawNumber = u.replace(/\D/g, '');
+            console.log(`[WA→MSG] LID _data fallback: ${rawNumber}`);
+          } catch(e2) { return; }
         }
       } else {
         console.log(`[WA→MSG] Formato desconhecido: ${msg.to}`);
         return;
       }
 
-      if (!rawNumber) { console.log(`[WA→MSG] Número vazio, ignorando`); return; }
+      if (!rawNumber || rawNumber.length < 8) { console.log(`[WA→MSG] Número inválido: "${rawNumber}", ignorando`); return; }
 
       const phone11   = rawNumber.slice(-11);
-      const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber;
-      console.log(`[WA→MSG] phone11=${phone11} phoneFull=${phoneFull}`);
+      // Garante DDI 55 sem duplicar
+      const phoneFull = rawNumber.startsWith('55') ? rawNumber : '55' + rawNumber.slice(-11);
+      console.log(`[WA→MSG] phone11=${phone11} phoneFull=${phoneFull} nome=${waContactName}`);
 
       let contact = db.prepare(
         "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
