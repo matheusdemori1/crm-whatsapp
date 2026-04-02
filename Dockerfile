@@ -10,7 +10,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 
     # Copiar package.json e instalar dependências
     COPY package*.json ./
-    RUN npm ci --only=production
+    RUN npm ci --omit=dev
 
     # Copiar o restante dos arquivos
     COPY . .
