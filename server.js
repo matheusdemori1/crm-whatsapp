@@ -514,9 +514,33 @@ async function initWAClient(userId) {
       if (!msg.to) return;
       if (msg.to.includes('@broadcast') || msg.to.includes('@g.us')) return;
 
-      const rawNumber = msg.to.replace('@c.us', '').replace(/\D/g, '');
-      const phone11   = rawNumber.slice(-11); // últimos 11 dígitos (DDD + número)
-      const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber; // com DDI 55
+      let rawNumber = '';
+      let waContactName = null;
+
+      if (msg.to.includes('@c.us')) {
+        // Formato padrão: número direto no JID
+        rawNumber = msg.to.replace('@c.us', '').replace(/\D/g, '');
+      } else if (msg.to.includes('@lid')) {
+        // Formato multi-device LID: precisa resolver o número real
+        try {
+          const waContact = await msg.getContact();
+          rawNumber = (waContact.number || waContact.id?.user || '').replace(/\D/g, '');
+          waContactName = waContact.pushname || waContact.name || null;
+          console.log(`[WA→MSG] LID resolvido → fone real: ${rawNumber} | nome: ${waContactName}`);
+        } catch(e) {
+          console.log(`[WA→MSG] Erro ao resolver LID ${msg.to}: ${e.message}`);
+          return;
+        }
+      } else {
+        console.log(`[WA→MSG] Formato desconhecido: ${msg.to}`);
+        return;
+      }
+
+      if (!rawNumber) { console.log(`[WA→MSG] Número vazio, ignorando`); return; }
+
+      const phone11   = rawNumber.slice(-11);
+      const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber;
+      console.log(`[WA→MSG] phone11=${phone11} phoneFull=${phoneFull}`);
 
       let contact = db.prepare(
         "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
@@ -525,12 +549,14 @@ async function initWAClient(userId) {
       const now = new Date().toISOString();
 
       if (!contact) {
-        // Tenta pegar o nome salvo no WhatsApp
-        let nome = phone11;
-        try {
-          const waContact = await msg.getContact();
-          nome = waContact.pushname || waContact.name || phone11;
-        } catch(e) {}
+        // Usa nome já resolvido (LID) ou tenta buscar agora (@c.us)
+        let nome = waContactName || phone11;
+        if (!waContactName) {
+          try {
+            const waContact = await msg.getContact();
+            nome = waContact.pushname || waContact.name || phone11;
+          } catch(e) {}
+        }
 
         const r = db.prepare(
           "INSERT INTO contacts (name, phone, funnel_stage, status, last_contact_at) VALUES (?, ?, 'contatado', 'lead', ?)"
