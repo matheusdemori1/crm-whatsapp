@@ -547,7 +547,8 @@ function renderContactsTable(contacts) {
         <td><div>${timeSince(c.last_contact_at)}</div>${c.last_contact_at?`<div style="font-size:11px;color:#999">${fmtDate(c.last_contact_at)}</div>`:''}</td>
         <td>${cooldownStatus(c)}</td>
         <td><div class="action-btns">
-          <button class="icon-btn icon-btn-green" title="Registrar contato" onclick="touchContact(${c.id},'${c.name.replace(/'/g,"\\'")}')">☎️</button>
+          <button class="icon-btn icon-btn-green" title="Enviar WhatsApp (rastreia automaticamente)" onclick="sendWhatsApp(${c.id},'${c.name.replace(/'/g,"\\'")}')">📤</button>
+          <button class="icon-btn icon-btn-green" title="Registrar contato manual" onclick="touchContact(${c.id},'${c.name.replace(/'/g,"\\'")}')">☎️</button>
           <button class="icon-btn icon-btn-blue"  title="Ver histórico"    onclick="viewContact(${c.id})">👁</button>
           <button class="icon-btn icon-btn-yellow" title="Registrar venda" onclick="openSaleModal(${c.id},'${c.name.replace(/'/g,"\\'")}')">💰</button>
           <button class="icon-btn icon-btn-blue"  title="Editar"          onclick="openContactModal(${c.id})">✏️</button>
@@ -624,6 +625,35 @@ function touchContact(id, name) {
     filterContacts();
     closeModal();
   });
+}
+
+// ─── SEND WHATSAPP ───
+function sendWhatsApp(id, name) {
+  showModal(`📤 Enviar WhatsApp — ${name}`, `
+    <div class="alert-strip green" style="margin-bottom:14px">
+      ✅ A mensagem será enviada pelo WhatsApp conectado E o contato será marcado automaticamente no sistema.
+    </div>
+    <div class="form-group"><label>Mensagem *</label>
+      <textarea id="wa-msg-text" rows="5" placeholder="Digite sua mensagem aqui..."></textarea>
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:4px">O WhatsApp precisa estar conectado (menu WhatsApp) para enviar.</p>
+  `, async () => {
+    const message = document.getElementById('wa-msg-text').value.trim();
+    if (!message) return toast('Digite uma mensagem', 'error');
+    try {
+      await api(`/whatsapp/send/${id}`, { method: 'POST', body: JSON.stringify({ message }) });
+      toast(`✅ Mensagem enviada para ${name}!`, 'success');
+      const idx = allContacts.findIndex(c => c.id === id);
+      if (idx >= 0) {
+        allContacts[idx].last_contact_at = new Date().toISOString();
+        if (allContacts[idx].funnel_stage === 'novo') allContacts[idx].funnel_stage = 'contatado';
+      }
+      filterContacts();
+      closeModal();
+    } catch(e) {
+      toast('Erro: ' + e.message, 'error');
+    }
+  }, 'Enviar');
 }
 
 // ─── VIEW CONTACT ───
@@ -860,12 +890,25 @@ async function loadSettings() {
             <div class="webhook-url" id="webhook-url" onclick="copyWebhook()" title="Clique para copiar">${settings.webhookUrl}</div>
           </div>
           <div class="webhook-box mt-2">
-            <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">Exemplo order.paid</label>
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">URL de TESTE (sem token, para diagnóstico)</label>
+            <div class="webhook-url" id="webhook-test-url" onclick="copyTestWebhook()" title="Clique para copiar">${settings.webhookUrl.replace(/\/api\/webhook\/.*/, '/api/webhook/test')}</div>
+            <p style="font-size:11px;color:#999;margin-top:6px">Envie um POST para esta URL para ver como o sistema interpreta o payload. Não salva dados.</p>
+          </div>
+          <div class="webhook-box mt-2">
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">Formato order.paid / order.create / order.expired</label>
             <pre style="font-size:12px;background:white;padding:10px;border-radius:6px;border:1px solid var(--border);overflow-x:auto">{ "event": "order.paid",
   "data": {
-    "user": { "name": "João", "phone": "+5511999998888", "email": "joao@email.com" },
+    "user": { "name": "João", "phone": "5511999998888", "email": "joao@email.com" },
     "product": { "title": "Curso de Node.js" },
     "total": 297.00
+  }
+}</pre>
+          </div>
+          <div class="webhook-box mt-2">
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:#999">Formato user.create</label>
+            <pre style="font-size:12px;background:white;padding:10px;border-radius:6px;border:1px solid var(--border);overflow-x:auto">{ "event": "user.create",
+  "data": {
+    "name": "João", "phone": "5511999998888", "email": "joao@email.com"
   }
 }</pre>
           </div>
@@ -897,6 +940,9 @@ async function loadSettings() {
 
 function copyWebhook() {
   navigator.clipboard.writeText(document.getElementById('webhook-url').textContent.trim()).then(()=>toast('URL copiada!','success'));
+}
+function copyTestWebhook() {
+  navigator.clipboard.writeText(document.getElementById('webhook-test-url').textContent.trim()).then(()=>toast('URL de teste copiada!','success'));
 }
 async function regenerateToken() {
   if(!confirm('Regenerar token?'))return;

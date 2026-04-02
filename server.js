@@ -310,14 +310,23 @@ app.post('/api/webhook/:token', express.json(), (req, res) => {
   const data = body.data || body;
   const now = new Date().toISOString();
 
-  const userData = data.user || data;
-  const name  = userData.name  || 'Cliente';
-  const phone = userData.phone || data.phone || null;
-  const email = userData.email || data.email || null;
-  const product = data.product?.title || data.product || null;
-  const value = parseFloat(data.total || data.value || 0);
+  // Formato user.create: campos do usuário ficam diretamente em "data"
+  // Formato order.*: campos do usuário ficam em "data.user"
+  let userData;
+  if (event === 'user.create') {
+    userData = data;
+  } else {
+    userData = data.user || data;
+  }
 
-  console.log(`[WEBHOOK] ${event || 'legacy'} | ${name} | ${phone}`);
+  const name    = userData?.name  || 'Cliente';
+  const phone   = userData?.phone || null;
+  const email   = userData?.email || null;
+  const product = (data.product && data.product.title) ? data.product.title
+                  : (typeof data.product === 'string'  ? data.product : null);
+  const value   = parseFloat(data.total || data.value || 0);
+
+  console.log(`[WEBHOOK] evento=${event||'legado'} | nome=${name} | fone=${phone} | email=${email} | produto=${product} | valor=${value}`);
 
   if (event === 'user.create') {
     const c = upsertContact({ name, phone, email, status: 'lead', funnel_stage: 'novo' });
@@ -366,6 +375,26 @@ app.post('/api/webhook/:token', express.json(), (req, res) => {
   const sale = db.prepare(`SELECT s.*, c.name as contact_name FROM sales s JOIN contacts c ON s.contact_id=c.id WHERE s.id=?`).get(sr.lastInsertRowid);
   io.emit('new_sale', sale);
   res.json({ success: true, contact_id: c.id });
+});
+
+// Endpoint de teste do webhook (sem token, só para diagnóstico)
+app.post('/api/webhook/test', express.json(), (req, res) => {
+  const body = req.body;
+  const event = body.event;
+  const data = body.data || body;
+  let userData;
+  if (event === 'user.create') { userData = data; }
+  else { userData = data.user || data; }
+  const parsed = {
+    event:   event || null,
+    name:    userData?.name  || null,
+    phone:   userData?.phone || null,
+    email:   userData?.email || null,
+    product: (data.product && data.product.title) ? data.product.title : null,
+    value:   parseFloat(data.total || data.value || 0)
+  };
+  console.log('[WEBHOOK TEST]', parsed);
+  res.json({ success: true, parsed, raw: body });
 });
 
 // ==================== SETTINGS ====================
@@ -452,23 +481,33 @@ async function initWAClient(userId) {
     }
   });
 
-  // MENSAGEM ENVIADA pela vendedora (você → cliente) ← NOVO
+  // MENSAGEM ENVIADA pela vendedora (você → cliente)
   client.on('message_create', async (msg) => {
-    if (!msg.fromMe || msg.to === 'status@broadcast') return;
-    const phone = msg.to.replace('@c.us', '').replace(/\D/g, '').slice(-11);
-    const contact = db.prepare(
-      "SELECT * FROM contacts WHERE replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(','') LIKE ?"
-    ).get(`%${phone}`);
-    if (contact) {
-      const now = new Date().toISOString();
-      const newStage = contact.funnel_stage === 'novo' ? 'contatado' : contact.funnel_stage;
-      db.prepare('UPDATE contacts SET last_contact_at=?, funnel_stage=? WHERE id=?').run(now, newStage, contact.id);
-      db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
-        contact.id, userId, 'whatsapp', 'outgoing', (msg.body || '').substring(0, 300)
-      );
-      const updated = db.prepare('SELECT * FROM contacts WHERE id=?').get(contact.id);
-      io.emit('contact_updated', updated);
-      console.log(`[WA→] Enviado para ${contact.name} | funil: ${newStage}`);
+    try {
+      console.log(`[WA→MSG] fromMe=${msg.fromMe} to=${msg.to} body="${(msg.body||'').substring(0,40)}"`);
+      if (!msg.fromMe) return;
+      if (!msg.to) return;
+      if (msg.to.includes('@broadcast') || msg.to.includes('@g.us')) return; // ignora grupos e broadcast
+      const phone = msg.to.replace('@c.us', '').replace(/\D/g, '').slice(-11);
+      console.log(`[WA→MSG] Buscando contato: fone=${phone}`);
+      const contact = db.prepare(
+        "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
+      ).get(`%${phone}`);
+      if (contact) {
+        const now = new Date().toISOString();
+        const newStage = contact.funnel_stage === 'novo' ? 'contatado' : contact.funnel_stage;
+        db.prepare('UPDATE contacts SET last_contact_at=?, funnel_stage=? WHERE id=?').run(now, newStage, contact.id);
+        db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
+          contact.id, userId, 'whatsapp', 'outgoing', (msg.body || '').substring(0, 300)
+        );
+        const updated = db.prepare('SELECT * FROM contacts WHERE id=?').get(contact.id);
+        io.emit('contact_updated', updated);
+        console.log(`[WA→MSG] ✅ Marcado: ${contact.name} | funil: ${newStage}`);
+      } else {
+        console.log(`[WA→MSG] Nenhum contato encontrado para fone ${phone}`);
+      }
+    } catch(err) {
+      console.error('[WA→MSG] Erro:', err.message);
     }
   });
 
@@ -494,6 +533,40 @@ app.post('/api/whatsapp/disconnect', auth, async (req, res) => {
 
 app.get('/api/whatsapp/status', auth, (req, res) => {
   res.json({ status: waStatus[req.user.id] || 'disconnected' });
+});
+
+// Enviar mensagem pelo WhatsApp + registrar interação automaticamente
+app.post('/api/whatsapp/send/:contactId', auth, async (req, res) => {
+  const uid = req.user.id;
+  const { message } = req.body;
+  const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(req.params.contactId);
+  if (!contact) return res.status(404).json({ error: 'Contato não encontrado' });
+  if (!contact.phone) return res.status(400).json({ error: 'Contato sem número de telefone' });
+
+  const client = waClients[uid];
+  if (!client || waStatus[uid] !== 'connected')
+    return res.status(400).json({ error: 'WhatsApp não conectado. Vá em WhatsApp e conecte primeiro.' });
+
+  const cleanPhone = contact.phone.replace(/\D/g, '');
+  const numberWithCC = cleanPhone.length <= 11 ? '55' + cleanPhone : cleanPhone;
+  const chatId = numberWithCC + '@c.us';
+
+  try {
+    await client.sendMessage(chatId, message || '(mensagem sem texto)');
+    const now = new Date().toISOString();
+    const newStage = contact.funnel_stage === 'novo' ? 'contatado' : contact.funnel_stage;
+    db.prepare('UPDATE contacts SET last_contact_at=?, funnel_stage=? WHERE id=?').run(now, newStage, contact.id);
+    db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
+      contact.id, uid, 'whatsapp', 'outgoing', (message || '').substring(0, 300)
+    );
+    const updated = db.prepare('SELECT * FROM contacts WHERE id=?').get(contact.id);
+    io.emit('contact_updated', updated);
+    console.log(`[WA→SEND] ✅ Enviado para ${contact.name} (${chatId})`);
+    res.json({ success: true, contact: updated });
+  } catch (e) {
+    console.error('[WA→SEND] Erro:', e.message);
+    res.status(500).json({ error: 'Erro ao enviar mensagem: ' + e.message });
+  }
 });
 
 // ==================== STATS ====================
