@@ -465,14 +465,38 @@ async function initWAClient(userId) {
   });
 
   // MENSAGEM RECEBIDA (cliente → você)
+  // Auto-cria contato se não existir
   client.on('message', async (msg) => {
     if (msg.from === 'status@broadcast' || msg.isStatus) return;
-    const phone = msg.from.replace('@c.us', '').replace(/\D/g, '').slice(-11);
-    const contact = db.prepare(
-      "SELECT * FROM contacts WHERE replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(','') LIKE ?"
-    ).get(`%${phone}`);
-    if (contact) {
-      const now = new Date().toISOString();
+    if (msg.from.includes('@g.us')) return; // ignora grupos
+
+    const rawNumber = msg.from.replace('@c.us', '').replace(/\D/g, '');
+    const phone11   = rawNumber.slice(-11);
+    const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber;
+
+    let contact = db.prepare(
+      "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
+    ).get(`%${phone11}`);
+
+    const now = new Date().toISOString();
+
+    if (!contact) {
+      let nome = phone11;
+      try {
+        const waContact = await msg.getContact();
+        nome = waContact.pushname || waContact.name || phone11;
+      } catch(e) {}
+
+      const r = db.prepare(
+        "INSERT INTO contacts (name, phone, funnel_stage, status, last_contact_at) VALUES (?, ?, 'novo', 'lead', ?)"
+      ).run(nome, phoneFull, now);
+      contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(r.lastInsertRowid);
+      db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
+        contact.id, userId, 'whatsapp', 'incoming', (msg.body || '').substring(0, 300)
+      );
+      io.emit('contact_created', contact);
+      console.log(`[WA←MSG] Novo contato criado (recebido): ${nome} (${phoneFull})`);
+    } else {
       db.prepare('UPDATE contacts SET last_contact_at=? WHERE id=?').run(now, contact.id);
       db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
         contact.id, userId, 'whatsapp', 'incoming', (msg.body || '').substring(0, 300)
@@ -482,19 +506,42 @@ async function initWAClient(userId) {
   });
 
   // MENSAGEM ENVIADA pela vendedora (você → cliente)
+  // Auto-cria contato se não existir, e sempre marca a interação
   client.on('message_create', async (msg) => {
     try {
       console.log(`[WA→MSG] fromMe=${msg.fromMe} to=${msg.to} body="${(msg.body||'').substring(0,40)}"`);
       if (!msg.fromMe) return;
       if (!msg.to) return;
-      if (msg.to.includes('@broadcast') || msg.to.includes('@g.us')) return; // ignora grupos e broadcast
-      const phone = msg.to.replace('@c.us', '').replace(/\D/g, '').slice(-11);
-      console.log(`[WA→MSG] Buscando contato: fone=${phone}`);
-      const contact = db.prepare(
+      if (msg.to.includes('@broadcast') || msg.to.includes('@g.us')) return;
+
+      const rawNumber = msg.to.replace('@c.us', '').replace(/\D/g, '');
+      const phone11   = rawNumber.slice(-11); // últimos 11 dígitos (DDD + número)
+      const phoneFull = rawNumber.length >= 12 ? rawNumber : '55' + rawNumber; // com DDI 55
+
+      let contact = db.prepare(
         "SELECT * FROM contacts WHERE replace(replace(replace(replace(replace(phone,'+',''),' ',''),'-',''),'(',''),')','') LIKE ?"
-      ).get(`%${phone}`);
-      if (contact) {
-        const now = new Date().toISOString();
+      ).get(`%${phone11}`);
+
+      const now = new Date().toISOString();
+
+      if (!contact) {
+        // Tenta pegar o nome salvo no WhatsApp
+        let nome = phone11;
+        try {
+          const waContact = await msg.getContact();
+          nome = waContact.pushname || waContact.name || phone11;
+        } catch(e) {}
+
+        const r = db.prepare(
+          "INSERT INTO contacts (name, phone, funnel_stage, status, last_contact_at) VALUES (?, ?, 'contatado', 'lead', ?)"
+        ).run(nome, phoneFull, now);
+        contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(r.lastInsertRowid);
+        db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
+          contact.id, userId, 'whatsapp', 'outgoing', (msg.body || '').substring(0, 300)
+        );
+        io.emit('contact_created', contact);
+        console.log(`[WA→MSG] ✅ Novo contato criado: ${nome} (${phoneFull})`);
+      } else {
         const newStage = contact.funnel_stage === 'novo' ? 'contatado' : contact.funnel_stage;
         db.prepare('UPDATE contacts SET last_contact_at=?, funnel_stage=? WHERE id=?').run(now, newStage, contact.id);
         db.prepare('INSERT INTO interactions (contact_id, user_id, type, direction, notes) VALUES (?,?,?,?,?)').run(
@@ -502,9 +549,7 @@ async function initWAClient(userId) {
         );
         const updated = db.prepare('SELECT * FROM contacts WHERE id=?').get(contact.id);
         io.emit('contact_updated', updated);
-        console.log(`[WA→MSG] ✅ Marcado: ${contact.name} | funil: ${newStage}`);
-      } else {
-        console.log(`[WA→MSG] Nenhum contato encontrado para fone ${phone}`);
+        console.log(`[WA→MSG] ✅ Atualizado: ${contact.name} | funil: ${newStage}`);
       }
     } catch(err) {
       console.error('[WA→MSG] Erro:', err.message);
